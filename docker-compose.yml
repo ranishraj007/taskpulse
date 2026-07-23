@@ -1,0 +1,57 @@
+services:
+  # ---------------------------------------------------
+  # 1. PostgreSQL Database
+  # ---------------------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: taskpulse_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: taskpulse
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: devpassword123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devuser -d taskpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------
+  # 2. Django Backend API
+  # ---------------------------------------------------
+  backend:
+    build: ./backend
+    container_name: taskpulse_backend
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             gunicorn --bind 0.0.0.0:8000 core.wsgi:application"
+    volumes:
+      - ./staticfiles:/app/staticfiles
+    environment:
+      - DB_NAME=taskpulse
+      - DB_USER=devuser
+      - DB_PASSWORD=devpassword123
+      - DB_HOST=db
+      - DB_PORT=5432
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  # ---------------------------------------------------
+  # 3. React (Vite + Tailwind) + Nginx Frontend
+  # ---------------------------------------------------
+  frontend:
+    build: ./frontend
+    container_name: taskpulse_frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+
+volumes:
+  postgres_data:
